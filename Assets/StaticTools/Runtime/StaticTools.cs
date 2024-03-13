@@ -47,7 +47,7 @@ namespace StaticTools
         }
     }
 
-    public struct StaticUpdate
+    public static class StaticUpdate
     {
         public delegate void UpdateDelegate();
 
@@ -98,7 +98,7 @@ namespace StaticTools
         }
     }
 
-    public struct StaticCoroutines
+    public static class StaticCoroutines
     {
         internal static PlayerLoopSystem GetPlayerLoopSystem()
         {
