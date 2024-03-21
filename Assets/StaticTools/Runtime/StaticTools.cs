@@ -98,6 +98,12 @@ namespace StaticTools
         }
     }
 
+    internal class RoutineInfo 
+    {
+        public IEnumerator enumerator;
+        public RoutineInfo routineToResume;
+    }
+
     public static class StaticCoroutines
     {
         internal static PlayerLoopSystem GetPlayerLoopSystem()
@@ -110,13 +116,15 @@ namespace StaticTools
         }
 
         //using a linked list to make removing random routines faster
-        private static LinkedList<IEnumerator> routines = new LinkedList<IEnumerator>();
+        private static LinkedList<RoutineInfo> routines = new LinkedList<RoutineInfo>();
 
         public static void StartCoroutine(IEnumerator routine) 
         {
-            if (routine.MoveNext()) 
+            RoutineInfo routineInfo = new RoutineInfo() { enumerator = routine };
+            var node = routines.AddLast(routineInfo);
+            if (!MoveNext(routineInfo)) 
             {
-                routines.AddLast(routine);
+                routines.Remove(node);
             }
         }
 
@@ -129,7 +137,7 @@ namespace StaticTools
             {
                 try
                 {
-                    if (!curRoutine.Value.MoveNext())
+                    if (!MoveNext(curRoutine.Value))
                     {
                         routines.Remove(curRoutine);
                     }
@@ -148,6 +156,62 @@ namespace StaticTools
                     }
                 }
             } while (curRoutine != null);
+        }
+
+
+        private static bool MoveNext(RoutineInfo routine) 
+        {
+            if (routine.enumerator.MoveNext())
+            {
+                if (routine.enumerator.Current != null && typeof(YieldInstruction).IsAssignableFrom(routine.enumerator.Current.GetType()))
+                {
+                    if (typeof(WaitForSeconds) == routine.enumerator.Current.GetType())
+                    {
+                        float seconds = (float)typeof(WaitForSeconds).GetField("m_Seconds", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(routine.enumerator.Current);
+
+                        //start a chain
+                        Debug.Log($"Start WaitForSeconds({seconds})");
+                        routines.AddLast(new RoutineInfo() { enumerator = WaitForSeconds(seconds), routineToResume = routine });
+
+                        return false;
+                    }
+                    else
+                    {
+                        Debug.LogError("Static Coroutines does not support the YieldInstruction(" + routine.enumerator.Current.GetType() + ") the routine will continue as normal");
+                        return true;
+                    }
+                }
+                else if (routine.enumerator.Current != null && typeof(IEnumerator).IsAssignableFrom(routine.enumerator.Current.GetType())) 
+                {
+                    Debug.Log("Chain Routine Started");
+                    routines.AddLast(new RoutineInfo() { enumerator = (IEnumerator)routine.enumerator.Current, routineToResume = routine });
+                    return false;
+                }
+                else
+                {
+                    Debug.Log("Routine continues");
+                    return true;
+                }
+            }
+            else 
+            {
+                Debug.Log("Routine ended");
+                if (routine.routineToResume != null) 
+                {
+                    routines.AddLast(routine.routineToResume);
+                }
+                return false;
+            }
+        }
+
+        internal static IEnumerator WaitForSeconds(float seconds)
+        {
+            float curTime = 0;
+            while (curTime < seconds)
+            {
+                yield return null;
+                curTime += Time.deltaTime;
+            }
         }
     }
 }
