@@ -4,17 +4,17 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.LowLevel;
 
-namespace StaticTools 
+namespace StaticTools
 {
     internal static class Initializer
     {
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void HookIntoPlayerLoop() 
+        private static void HookIntoPlayerLoop()
         {
             AddToPlayerLoop("Update", 0, StaticUpdate.GetPlayerLoopSystem());
             AddToPlayerLoop("Update", 1, StaticCoroutines.GetPlayerLoopSystem());
         }
-        
+
         public static void AddToPlayerLoop(string targetSubSystem, int targetIndex, PlayerLoopSystem newSystem)
         {
             var playerLoop = PlayerLoop.GetCurrentPlayerLoop();
@@ -53,7 +53,7 @@ namespace StaticTools
 
         private static List<UpdateDelegate> updates = new List<UpdateDelegate>();
 
-        internal static PlayerLoopSystem GetPlayerLoopSystem() 
+        internal static PlayerLoopSystem GetPlayerLoopSystem()
         {
             return new PlayerLoopSystem()
             {
@@ -64,12 +64,12 @@ namespace StaticTools
 
         public static void AddUpdate(UpdateDelegate update)
         {
-            if (!update.Method.IsStatic) 
+            if (!update.Method.IsStatic)
             {
                 Debug.LogError("StaticUpdate only supports running static methods.");
                 return;
             }
-            if (updates.Contains(update)) 
+            if (updates.Contains(update))
             {
                 Debug.LogWarning($"{update.Method.Name} has already been added to StaticUpdate.");
                 return;
@@ -77,14 +77,14 @@ namespace StaticTools
             updates.Add(update);
         }
 
-        public static void RemoveUpdate(UpdateDelegate update) 
+        public static void RemoveUpdate(UpdateDelegate update)
         {
             updates.Remove(update);
         }
 
-        private static void Update() 
+        private static void Update()
         {
-            foreach (var update in updates) 
+            foreach (var update in updates)
             {
                 try
                 {
@@ -98,10 +98,15 @@ namespace StaticTools
         }
     }
 
-    internal class RoutineInfo 
+    internal class RoutineInfo
     {
         public IEnumerator enumerator;
         public RoutineInfo routineToResume;
+    }
+
+    public class StaticCoroutine
+    {
+        internal RoutineInfo routine;
     }
 
     public static class StaticCoroutines
@@ -118,18 +123,60 @@ namespace StaticTools
         //using a linked list to make removing random routines faster
         private static LinkedList<RoutineInfo> routines = new LinkedList<RoutineInfo>();
 
-        public static void StartCoroutine(IEnumerator routine) 
+        public static StaticCoroutine StartCoroutine(IEnumerator routine)
         {
             RoutineInfo routineInfo = new RoutineInfo() { enumerator = routine };
             var node = routines.AddLast(routineInfo);
-            if (!MoveNext(routineInfo)) 
+            if (!MoveNext(routineInfo))
             {
                 routines.Remove(node);
             }
+            return new StaticCoroutine() { routine = routineInfo };
         }
 
+        public static void StopCoroutine(StaticCoroutine coroutine)
+        {
+            if (coroutine == null) { return; }
+            var curRoutine = routines.First;
+            if (curRoutine == null) { return; }
+            var nextRoutine = curRoutine.Next;
+            do
+            {
+                if (DoesCoroutineMatch(coroutine, curRoutine.Value))
+                {
+                    routines.Remove(curRoutine);
+                    return;
+                }
+                curRoutine = nextRoutine;
+                if (curRoutine != null)
+                {
+                    nextRoutine = curRoutine.Next;
+                }
+            } while (curRoutine != null);
+        }
+
+        private static bool DoesCoroutineMatch(StaticCoroutine marker, RoutineInfo toCheck)
+        {
+            if (toCheck == marker.routine)
+            {
+                return true;
+            }
+            else
+            {
+                if (toCheck.routineToResume != null)
+                {
+                    return DoesCoroutineMatch(marker, toCheck.routineToResume);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+        }
+
+
         private static void Update()
-        { 
+        {
             var curRoutine = routines.First;
             if (curRoutine == null) { return; }
             var nextRoutine = curRoutine.Next;
@@ -147,10 +194,10 @@ namespace StaticTools
                     Debug.LogException(e);
                     routines.Remove(curRoutine);
                 }
-                finally 
+                finally
                 {
                     curRoutine = nextRoutine;
-                    if (curRoutine != null) 
+                    if (curRoutine != null)
                     {
                         nextRoutine = curRoutine.Next;
                     }
@@ -159,7 +206,7 @@ namespace StaticTools
         }
 
 
-        private static bool MoveNext(RoutineInfo routine) 
+        private static bool MoveNext(RoutineInfo routine)
         {
             if (routine.enumerator.MoveNext())
             {
@@ -181,7 +228,7 @@ namespace StaticTools
                         return true;
                     }
                 }
-                else if (routine.enumerator.Current != null && typeof(IEnumerator).IsAssignableFrom(routine.enumerator.Current.GetType())) 
+                else if (routine.enumerator.Current != null && typeof(IEnumerator).IsAssignableFrom(routine.enumerator.Current.GetType()))
                 {
                     Debug.Log("Chain Routine Started");
                     routines.AddLast(new RoutineInfo() { enumerator = (IEnumerator)routine.enumerator.Current, routineToResume = routine });
@@ -193,10 +240,10 @@ namespace StaticTools
                     return true;
                 }
             }
-            else 
+            else
             {
                 Debug.Log("Routine ended");
-                if (routine.routineToResume != null) 
+                if (routine.routineToResume != null)
                 {
                     routines.AddLast(routine.routineToResume);
                 }
