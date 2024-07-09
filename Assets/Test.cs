@@ -40,7 +40,7 @@ public static class TestStatic
 
     private static void OnUpdate() 
     {
-        //Debug.Log("Static Update");
+        Debug.Log("Static Update");
     }
 
     public static IEnumerator TestStaticRoutine()

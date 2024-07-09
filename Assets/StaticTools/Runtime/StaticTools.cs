@@ -3,6 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.LowLevel;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace StaticTools
 {
@@ -16,6 +19,10 @@ namespace StaticTools
         {
             AddToPlayerLoop("Update", 0, StaticUpdate.GetPlayerLoopSystem());
             AddToPlayerLoop("Update", 1, StaticCoroutines.GetPlayerLoopSystem());
+#if UNITY_EDITOR
+            EditorApplication.playModeStateChanged += StaticUpdate.EndPlayMode;
+            EditorApplication.playModeStateChanged += StaticCoroutines.EndPlayMode;
+#endif
         }
 
         /// <summary>
@@ -82,7 +89,7 @@ namespace StaticTools
         {
             if (!update.Method.IsStatic)//Force the method to be static for saftey and consistency 
             {
-                Debug.LogError("StaticUpdate only supports running static methods."); 
+                Debug.LogError("StaticUpdate only supports running static methods.");
                 return;
             }
             if (updates.Contains(update))
@@ -105,6 +112,7 @@ namespace StaticTools
         //Runs the update delegates
         private static void Update()
         {
+            if (!Application.isPlaying) { return; }
             foreach (var update in updates)
             {
                 //try-catch each method so that an error doesn't prevent others from running
@@ -118,6 +126,16 @@ namespace StaticTools
                 }
             }
         }
+
+#if UNITY_EDITOR
+        public static void EndPlayMode(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                updates.Clear();
+            }
+        }
+#endif
     }
 
     /// <summary>
@@ -223,6 +241,7 @@ namespace StaticTools
         //perform steps on all coroutines
         private static void Update()
         {
+            if (!Application.isPlaying) { return; }
             var curRoutine = routines.First;
             if (curRoutine == null) { return; }
             var nextRoutine = curRoutine.Next;
@@ -273,7 +292,6 @@ namespace StaticTools
                         float seconds = (float)typeof(WaitForSeconds).GetField("m_Seconds", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(routine.enumerator.Current);
 
                         //start a chain
-                        Debug.Log($"Start WaitForSeconds({seconds})");
                         routines.AddLast(new RoutineInfo() { enumerator = WaitForSeconds(seconds), routineToResume = routine });
 
                         return false;
@@ -287,20 +305,17 @@ namespace StaticTools
                 // If the result is another routine we start that one and mark the current one to be resumed uppon completion of the new routine
                 else if (routine.enumerator.Current != null && typeof(IEnumerator).IsAssignableFrom(routine.enumerator.Current.GetType()))
                 {
-                    Debug.Log("Chain Routine Started");
                     routines.AddLast(new RoutineInfo() { enumerator = (IEnumerator)routine.enumerator.Current, routineToResume = routine });
                     return false;
                 }
                 // If the result is not a YieldInstruction or another routine it is ignored
                 else
                 {
-                    Debug.Log("Routine continues");
                     return true;
                 }
             }
             else
             {
-                Debug.Log("Routine ended");
                 if (routine.routineToResume != null)// Resume the previous routine if there is one
                 {
                     routines.AddLast(routine.routineToResume);
@@ -323,5 +338,15 @@ namespace StaticTools
                 curTime += Time.deltaTime;
             }
         }
+
+#if UNITY_EDITOR
+        public static void EndPlayMode(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                routines.Clear();
+            }
+        }
+#endif
     }
 }
